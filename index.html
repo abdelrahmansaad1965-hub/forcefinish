@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit | Smart Schedule Planner</title>
+    <script src="https://tailwindcss.com"></script>
+    <link href="https://cloudflare.com" rel="stylesheet">
+    <style>
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .gradient-bg { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-slate-800 font-sans pb-12">
+
+    <!-- Login Screen -->
+    <div id="loginScreen" class="flex items-center justify-center min-h-screen p-4">
+        <div class="glass p-8 rounded-2xl shadow-2xl w-full max-w-md text-center">
+            <div class="text-4xl mb-4">📅</div>
+            <h1 class="text-3xl font-bold text-blue-900 mb-2">Orbit</h1>
+            <p class="text-slate-500 mb-8">Plan your habits, achieve your goals.</p>
+            <input type="text" id="userName" placeholder="Enter your name" class="w-full p-3 border rounded-xl mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+            <button onclick="startApp()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition duration-300 shadow-lg">Get Started</button>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="appScreen" class="hidden container mx-auto px-4 pt-8">
+        <nav class="flex justify-between items-center mb-8 glass p-4 rounded-2xl shadow-lg">
+            <h2 class="text-xl font-bold text-blue-900">Welcome, <span id="displayName" class="text-blue-600"></span>!</h2>
+            <button onclick="logout()" class="text-sm font-semibold text-red-500 hover:text-red-700">Logout</button>
+        </nav>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1">
+                <div class="glass p-6 rounded-2xl shadow-lg sticky top-8">
+                    <h3 class="text-lg font-bold mb-4">New Schedule</h3>
+                    <div class="space-y-4">
+                        <input type="text" id="scheduleName" placeholder="Goal Name" class="w-full p-2 border-b outline-none">
+                        <div class="flex gap-4">
+                            <input type="number" id="totalDays" value="7" class="w-1/2 p-2 border-b outline-none">
+                            <input type="number" id="tasksPerDay" value="3" class="w-1/2 p-2 border-b outline-none">
+                        </div>
+                        <input type="text" id="taskNames" value="Workout, Read, Water" class="w-full p-2 border-b outline-none">
+                        <button onclick="createSchedule()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">Create Plan</button>
+                    </div>
+                </div>
+            </div>
+            <div class="lg:col-span-2">
+                <div id="schedulesList" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modalOverlay" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-3xl p-6 shadow-2xl relative">
+            <button onclick="closeModal()" class="absolute top-4 right-4 text-2xl">&times;</button>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentUser = null;
+        let schedules = [];
+
+        function startApp() {
+            const name = document.getElementById('userName').value;
+            if (!name) return alert('Enter a name');
+            currentUser = name;
+            document.getElementById('displayName').innerText = name;
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('appScreen').classList.remove('hidden');
+            loadData();
+        }
+
+        function createSchedule() {
+            const name = document.getElementById('scheduleName').value || "My Challenge";
+            const days = parseInt(document.getElementById('totalDays').value);
+            const tasks = parseInt(document.getElementById('tasksPerDay').value);
+            const taskList = document.getElementById('taskNames').value.split(',').map(t => t.trim());
+
+            schedules.push({ id: Date.now(), name, totalDays: days, tasksPerDay: tasks, taskNames: taskList, completions: {} });
+            saveData();
+            displaySchedules();
+        }
+
+        function displaySchedules() {
+            const list = document.getElementById('schedulesList');
+            list.innerHTML = schedules.map(s => {
+                const completed = Object.keys(s.completions).length;
+                const progress = Math.round((completed / (s.totalDays * s.tasksPerDay)) * 100) || 0;
+                return `
+                    <div class="glass p-5 rounded-2xl shadow-lg">
+                        <h4 class="font-bold text-blue-900">${s.name}</h4>
+                        <div class="w-full bg-slate-200 h-2 rounded-full my-4">
+                            <div class="bg-blue-600 h-2 rounded-full" style="width: ${progress}%"></div>
+                        </div>
+                        <button onclick="viewSchedule(${s.id})" class="w-full bg-slate-100 py-2 rounded-lg text-sm font-bold">View</button>
+                    </div>`;
+            }).join('');
+        }
+
+        function viewSchedule(id) {
+            const s = schedules.find(x => x.id === id);
+            let html = `<h2 class="text-2xl font-bold mb-6">${s.name}</h2>`;
+            for(let d=1; d<=s.totalDays; d++) {
+                html += `<div class="mb-4"><h5 class="text-xs font-bold text-slate-400">DAY ${d}</h5>`;
+                for(let t=0; t<s.tasksPerDay; t++) {
+                    const done = s.completions[`${d}_${t}`];
+                    html += `<div class="flex justify-between p-2 border-b">
+                        <span>${s.taskNames[t] || 'Task'}</span>
+                        ${done ? '✅' : `<button onclick="completeTask(${s.id},${d},${t})" class="text-blue-600">Done</button>`}
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+            document.getElementById('modalContent').innerHTML = html;
+            document.getElementById('modalOverlay').classList.remove('hidden');
+        }
+
+        function completeTask(sId, d, t) {
+            const s = schedules.find(x => x.id === sId);
+            s.completions[`${d}_${t}`] = true;
+            saveData(); viewSchedule(sId); displaySchedules();
+        }
+
+        function closeModal() { document.getElementById('modalOverlay').classList.add('hidden'); }
+        function saveData() { localStorage.setItem('orbit_' + currentUser, JSON.stringify(schedules)); }
+        function loadData() { schedules = JSON.parse(localStorage.getItem('orbit_' + currentUser)) || []; displaySchedules(); }
+        function logout() { location.reload(); }
+    </script>
+</body>
+</html>
